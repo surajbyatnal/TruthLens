@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TruthLens – Fake News Detection &amp; Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#F3F6FC; --surface:#FFFFFF; --ink:#0B1B3F; --muted:#5B6B8C; --line:#E0E7F3;
+  --navy:#0B1F4B; --navy-2:#13306E; --accent:#2F6BFF; --accent-soft:#E6EEFF;
+  --real:#0E9F5B; --real-soft:#E1F5EC; --fake:#DE3547; --fake-soft:#FCE7EA; --amber:#C97F00; --amber-soft:#FFF1D6;
+  --shadow:0 1px 2px rgba(11,31,75,.05),0 6px 20px rgba(11,31,75,.04);
+  --display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --body:Figtree,"Segoe UI",system-ui,-apple-system,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#060E26; --surface:#0D1938; --ink:#E7EDFB; --muted:#98A8C8; --line:#1B2B57;
+    --navy:#040A1E; --navy-2:#0F2658; --accent:#6C97FF; --accent-soft:#15275A;
+    --real:#34D399; --real-soft:#0E3128; --fake:#FF6B7B; --fake-soft:#3B1722; --amber:#F5B544; --amber-soft:#3A2A0B;
+    --shadow:0 1px 2px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#060E26; --surface:#0D1938; --ink:#E7EDFB; --muted:#98A8C8; --line:#1B2B57;
+  --navy:#040A1E; --navy-2:#0F2658; --accent:#6C97FF; --accent-soft:#15275A;
+  --real:#34D399; --real-soft:#0E3128; --fake:#FF6B7B; --fake-soft:#3B1722; --amber:#F5B544; --amber-soft:#3A2A0B;
+  --shadow:0 1px 2px rgba(0,0,0,.3);
+}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px);-webkit-text-size-adjust:100%}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--body);min-height:100%}
+h1,h2,h3{font-family:var(--display);line-height:1.15;margin:0;letter-spacing:-.01em}
+p{margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* layout */
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:256px;background:var(--navy);color:#DCE6FF;padding:calc(22px + env(safe-area-inset-top,0px)) 16px calc(18px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:22px;z-index:40;transition:transform .25s ease}
+.brand{display:flex;align-items:center;gap:11px;padding:0 8px;color:#fff;text-decoration:none}
+.brand b{font-family:var(--display);font-size:22px;font-weight:700;letter-spacing:-.02em}
+.nav{display:flex;flex-direction:column;gap:4px}
+.nav a{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:12px;color:#B9C8EC;text-decoration:none;font-weight:500;transition:background .15s,color .15s}
+.nav a svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.nav a:hover{background:rgba(255,255,255,.06);color:#fff}
+.nav a.active{background:#fff;color:var(--navy)}
+.sidenote{margin-top:auto;background:rgba(255,255,255,.06);border-radius:14px;padding:14px;font-size:13px;color:#B9C8EC;line-height:1.5}
+.sidenote b{color:#fff;display:block;margin-bottom:2px}
+.main{margin-left:256px;padding:28px clamp(16px,3vw,40px) 56px;max-width:1320px}
+.topbar{display:none}
+.scrim{display:none}
+@media (max-width:900px){
+  .sidebar{transform:translateX(-102%);width:270px}
+  body.menu .sidebar{transform:none}
+  body.menu .scrim{display:block;position:fixed;inset:0;background:rgba(3,10,30,.5);z-index:30}
+  .main{margin-left:0;padding-top:16px}
+  .topbar{display:flex;align-items:center;gap:12px;position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);padding:10px clamp(16px,3vw,40px);border-bottom:1px solid var(--line)}
+  .topbar button{background:var(--surface);border:1px solid var(--line);border-radius:10px;width:42px;height:42px;display:grid;place-items:center;cursor:pointer}
+  .topbar b{font-family:var(--display);font-size:19px}
+}
+.page{display:none}
+.page.show{display:block;animation:pgin .28s ease}
+@keyframes pgin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.page-head{margin-bottom:22px}
+.page-head h2{font-size:clamp(26px,3.4vw,34px)}
+.page-head p{color:var(--muted);margin-top:6px;max-width:62ch}
+
+/* cards */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:var(--shadow)}
+.card h3{font-size:18px;margin-bottom:4px}
+.card .sub{color:var(--muted);font-size:13.5px;margin-bottom:14px}
+.grid{display:grid;gap:18px}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:1100px){.g4{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:720px){.g4,.g2,.g3{grid-template-columns:minmax(0,1fr)}}
+.g-home{grid-template-columns:minmax(0,1fr) minmax(0,1.15fr)}
+.g-perf{grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);align-items:center}
+@media (max-width:900px){.g-home,.g-perf{grid-template-columns:minmax(0,1fr)}.mini{grid-template-columns:repeat(2,1fr)}}
+.chart-box{position:relative;height:290px}
+.chart-box.tall{height:340px}
+
+/* hero */
+.hero{position:relative;overflow:hidden;border-radius:24px;background:linear-gradient(120deg,var(--navy) 0%,var(--navy-2) 100%);color:#fff;padding:clamp(26px,4vw,44px);margin-bottom:20px;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,.7fr);gap:20px;align-items:center}
+.hero h1{font-size:clamp(40px,6vw,64px);font-weight:700;letter-spacing:-.03em}
+.hero p{color:#C4D3F5;font-size:clamp(16px,1.6vw,19px);margin-top:12px;max-width:44ch}
+.hero .cta{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}
+.lens{width:100%;max-width:280px;justify-self:end}
+.lens .sweep{transform-origin:100px 100px;animation:spin 14s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (max-width:760px){.hero{grid-template-columns:1fr}.lens{display:none}}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:10px 16px;border-radius:12px;font-weight:600;cursor:pointer;text-decoration:none;transition:transform .12s,background .15s,border-color .15s}
+.btn:hover{border-color:var(--accent)}
+.btn:active{transform:scale(.98)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:#1F58E6}
+.btn.light{background:#fff;color:var(--navy);border-color:#fff}
+.btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.35)}
+.btn.ghost:hover{border-color:#fff}
+.btn.big{padding:13px 22px;font-size:16px}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn.sm{padding:7px 12px;font-size:13.5px;border-radius:10px}
+
+/* stat cards */
+.stat{display:flex;gap:14px;align-items:flex-start}
+.stat .ic{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;flex:none}
+.stat .ic svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.stat .lbl{color:var(--muted);font-size:13.5px;font-weight:500}
+.stat .val{font-family:var(--display);font-size:32px;font-weight:700;letter-spacing:-.02em;line-height:1.1;margin:2px 0}
+.stat .cap{color:var(--muted);font-size:12.5px}
+.ic.blue{background:var(--accent-soft);color:var(--accent)}
+.ic.red{background:var(--fake-soft);color:var(--fake)}
+.ic.green{background:var(--real-soft);color:var(--real)}
+.ic.amber{background:var(--amber-soft);color:var(--amber)}
+
+/* flow */
+.flow{display:flex;flex-direction:column;gap:0;margin-top:6px}
+.flow .st{display:flex;gap:12px;align-items:flex-start;position:relative;padding-bottom:14px}
+.flow .st:not(:last-child)::before{content:"";position:absolute;left:15px;top:32px;bottom:0;width:2px;background:var(--line)}
+.flow .dot{width:32px;height:32px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;flex:none}
+.flow .dot svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.flow b{display:block;font-size:14.5px}
+.flow span{color:var(--muted);font-size:13px}
+.flow.h{flex-direction:row;flex-wrap:wrap;gap:10px}
+.flow.h .st{padding:0;flex:1 1 150px;flex-direction:column;background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:14px}
+.flow.h .st::before{display:none}
+
+/* table */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-weight:600;color:var(--muted);font-size:13px;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr{transition:background .12s}
+tbody tr.click{cursor:pointer}
+tbody tr.click:hover{background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td.title{min-width:240px;max-width:460px;font-weight:500}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12.5px;font-weight:700;white-space:nowrap}
+.badge::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.badge.real{background:var(--real-soft);color:var(--real)}
+.badge.fake{background:var(--fake-soft);color:var(--fake)}
+.conf{display:flex;align-items:center;gap:8px;min-width:110px}
+.conf i{display:block;height:6px;flex:1;border-radius:6px;background:var(--line);overflow:hidden;position:relative}
+.conf i::after{content:"";position:absolute;inset:0;width:var(--w);background:var(--c);border-radius:6px}
+.conf span{font-variant-numeric:tabular-nums;font-size:13px;min-width:42px}
+.tag{display:inline-block;padding:2px 9px;border-radius:8px;background:var(--bg);border:1px solid var(--line);font-size:12.5px}
+
+/* detect */
+.detect{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:1000px){.detect{grid-template-columns:1fr}}
+label.f{display:block;font-weight:600;font-size:14px;margin:0 0 6px}
+textarea,input[type=text],input[type=search],select{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px;transition:border-color .15s,box-shadow .15s}
+textarea{min-height:250px;resize:vertical;line-height:1.55}
+textarea:focus,input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.hint{color:var(--muted);font-size:13px}
+.err{color:var(--fake);font-size:13.5px;font-weight:500;min-height:20px;margin-top:8px}
+.empty{display:grid;place-items:center;text-align:center;padding:40px 16px;color:var(--muted)}
+.empty svg{width:96px;height:96px;margin-bottom:12px}
+.empty b{color:var(--ink);font-family:var(--display);font-size:19px;display:block;margin-bottom:4px}
+
+/* scanning */
+.scan{padding:6px 0}
+.scan .lines{position:relative;display:grid;gap:9px;margin:14px 0 18px;overflow:hidden;border-radius:12px;padding:14px;background:var(--bg)}
+.scan .lines span{height:9px;border-radius:5px;background:var(--line)}
+.scan .lines::after{content:"";position:absolute;left:0;right:0;height:46px;background:linear-gradient(180deg,transparent,rgba(47,107,255,.28),transparent);animation:beam 1.2s ease-in-out infinite}
+@keyframes beam{0%{top:-46px}100%{top:100%}}
+.steps{display:grid;gap:8px}
+.steps div{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:14px;transition:color .2s}
+.steps i{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-style:normal;font-size:11px;color:#fff;flex:none}
+.steps div.on{color:var(--ink)}
+.steps div.on i{border-color:var(--accent);border-top-color:transparent;animation:spin .8s linear infinite}
+.steps div.done{color:var(--ink)}
+.steps div.done i{background:var(--real);border-color:var(--real);animation:none}
+
+/* result */
+.verdict{display:flex;align-items:center;gap:18px;border-radius:16px;padding:16px 18px;margin-bottom:16px}
+.verdict.real{background:var(--real-soft);color:var(--real)}
+.verdict.fake{background:var(--fake-soft);color:var(--fake)}
+.verdict .vt{font-family:var(--display);font-size:34px;font-weight:700;line-height:1;letter-spacing:-.02em}
+.verdict small{display:block;font-size:13.5px;margin-top:5px;color:var(--ink);opacity:.8;font-family:var(--body);font-weight:500}
+.gauge{position:relative;width:118px;height:118px;flex:none;margin-left:auto}
+.gauge svg{width:100%;height:100%;transform:rotate(-90deg)}
+.gauge circle{fill:none;stroke-width:11;stroke-linecap:round}
+.gauge .tr{stroke:var(--surface);opacity:.75}
+.gauge .pr{stroke:currentColor;transition:stroke-dashoffset 1.1s cubic-bezier(.2,.8,.2,1)}
+.gauge .gv{position:absolute;inset:0;display:grid;place-content:center;text-align:center;color:var(--ink)}
+.gauge .gv b{font-family:var(--display);font-size:25px;line-height:1}
+.gauge .gv span{font-size:11.5px;color:var(--muted)}
+.probs{display:grid;gap:8px;margin:4px 0 16px}
+.prob{display:grid;grid-template-columns:48px 1fr 48px;gap:10px;align-items:center;font-size:13.5px}
+.prob i{height:8px;border-radius:8px;background:var(--line);overflow:hidden;display:block}
+.prob i u{display:block;height:100%;width:0;border-radius:8px;transition:width 1s cubic-bezier(.2,.8,.2,1);text-decoration:none}
+.prob em{font-style:normal;text-align:right;font-variant-numeric:tabular-nums}
+.rs h4{font-family:var(--display);font-size:15px;margin:16px 0 6px}
+.rs ul{margin:0;padding-left:18px;color:var(--ink)}
+.rs li{margin:4px 0}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{padding:4px 11px;border-radius:999px;font-size:13px;font-weight:600}
+.chip.s{background:var(--fake-soft);color:var(--fake)}
+.chip.c{background:var(--real-soft);color:var(--real)}
+.chip.n{background:var(--accent-soft);color:var(--accent)}
+.excerpt{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.7;max-height:190px;overflow:auto}
+mark.s{background:var(--fake-soft);color:var(--fake);border-radius:4px;padding:0 3px;font-weight:600}
+mark.c{background:var(--real-soft);color:var(--real);border-radius:4px;padding:0 3px;font-weight:600}
+.rise>*{animation:pgin .35s ease both}
+.rise>*:nth-child(2){animation-delay:.08s}.rise>*:nth-child(3){animation-delay:.16s}.rise>*:nth-child(4){animation-delay:.24s}.rise>*:nth-child(5){animation-delay:.32s}
+
+/* analytics / pipeline */
+.pipe{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:14px 0}
+@media (max-width:1000px){.pipe{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.pst{border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--bg);transition:border-color .2s,background .2s}
+.pst b{display:block;font-size:14.5px}
+.pst .m{font-family:var(--display);font-size:20px;font-weight:700;margin:6px 0 2px;min-height:26px}
+.pst span{color:var(--muted);font-size:12.5px}
+.pst.on{border-color:var(--accent);background:var(--accent-soft)}
+.pst.done{border-color:var(--real)}
+.log{background:var(--navy);color:#B9D0FF;border-radius:12px;padding:12px 14px;font:13px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;max-height:150px;overflow:auto;min-height:60px}
+.log div{white-space:pre-wrap}
+.seg{display:inline-flex;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:3px}
+.seg button{border:0;background:transparent;padding:6px 14px;border-radius:9px;cursor:pointer;font-weight:600;color:var(--muted)}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.kv{display:grid;grid-template-columns:1fr auto;gap:0}
+.kv div{padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
+.kv div:nth-child(even){text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.cm{display:grid;grid-template-columns:auto 1fr 1fr;gap:6px;font-size:13.5px;text-align:center;align-items:stretch}
+.cm .h{color:var(--muted);font-size:12.5px;align-self:center}
+.cm .cell{border-radius:10px;padding:12px 6px;font-weight:700;font-family:var(--display);font-size:20px}
+.cm .ok{background:var(--real-soft);color:var(--real)}
+.cm .bad{background:var(--fake-soft);color:var(--fake)}
+.mini{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+.mini div{background:var(--bg);border-radius:12px;padding:10px;text-align:center}
+.mini b{display:block;font-family:var(--display);font-size:19px}
+.mini span{color:var(--muted);font-size:12px}
+
+/* history */
+.filters{display:grid;grid-template-columns:minmax(0,2fr) repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}
+@media (max-width:900px){.filters{grid-template-columns:1fr 1fr}.filters .search{grid-column:1/-1}}
+.pager{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;flex-wrap:wrap}
+
+/* about */
+.prose h3{margin:0 0 8px}
+.prose p,.prose li{color:var(--ink)}
+.prose ul{padding-left:20px;margin:8px 0 0}
+.prose li{margin:5px 0}
+.tech{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.tech div{border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--bg)}
+.tech b{display:block}
+.tech span{color:var(--muted);font-size:13px}
+pre{background:var(--navy);color:#CFE0FF;border-radius:12px;padding:14px 16px;overflow:auto;font:12.5px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:10px 0 0}
+.v4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:12px}
+@media (max-width:900px){.v4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.v4 div{border:1px solid var(--line);border-radius:14px;padding:14px}
+.v4 b{display:block;font-family:var(--display);font-size:16px;margin-bottom:3px}
+.v4 span{color:var(--muted);font-size:13px}
+.note{background:var(--amber-soft);color:var(--ink);border-radius:14px;padding:14px 16px;font-size:14px;border-left:4px solid var(--amber)}
+
+/* modal */
+.modal{position:fixed;inset:0;background:rgba(3,10,30,.55);display:none;align-items:center;justify-content:center;padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px));z-index:60}
+.modal.open{display:flex}
+.modal .box{background:var(--surface);border-radius:20px;max-width:640px;width:100%;max-height:100%;overflow:auto;padding:24px;animation:pgin .22s ease}
+.modal .x{float:right;border:0;background:var(--bg);width:36px;height:36px;border-radius:10px;cursor:pointer;font-size:18px}
+.toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom,0px));transform:translate(-50%,30px);background:var(--navy);color:#fff;padding:11px 18px;border-radius:12px;opacity:0;pointer-events:none;transition:.25s;z-index:70;font-weight:500}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+
+<div class="scrim" id="scrim"></div>
+<aside class="sidebar" id="sidebar" aria-label="Main navigation">
+  <a class="brand" href="#home">
+    <svg width="34" height="34" viewBox="0 0 40 40" aria-hidden="true"><circle cx="17" cy="17" r="11" fill="none" stroke="#fff" stroke-width="3.2"/><path d="M26 26l9 9" stroke="#6C97FF" stroke-width="4" stroke-linecap="round"/><path d="M11.5 17.5l4 4 7-8" fill="none" stroke="#6C97FF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <b>TruthLens</b>
+  </a>
+  <nav class="nav" id="nav">
+    <a href="#home" data-page="home"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Dashboard</a>
+    <a href="#detect" data-page="detect"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Detect news</a>
+    <a href="#analytics" data-page="analytics"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Analytics</a>
+    <a href="#history" data-page="history"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>History</a>
+    <a href="#about" data-page="about"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>About</a>
+  </nav>
+  <div class="sidenote" id="sideNote"><b>Prototype build</b>Dataset analytics are simulated. The classifier runs in your browser, so nothing you paste leaves this page.</div>
+</aside>
+
+<header class="topbar">
+  <button id="menuBtn" aria-label="Open menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+  <b>TruthLens</b>
+</header>
+
+<main class="main" id="main">
+
+<!-- HOME -->
+<section class="page" id="page-home">
+  <div class="hero">
+    <div>
+      <h1>TruthLens</h1>
+      <p>AI-powered Fake News Detection &amp; Big Data Analytics</p>
+      <div class="cta">
+        <a class="btn light big" href="#detect">Analyze an article</a>
+        <a class="btn ghost big" href="#analytics">Explore analytics</a>
+      </div>
+    </div>
+    <svg class="lens" viewBox="0 0 200 200" aria-hidden="true">
+      <circle cx="100" cy="100" r="86" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="1.5"/>
+      <circle cx="100" cy="100" r="62" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="1.5"/>
+      <circle cx="100" cy="100" r="38" fill="rgba(108,151,255,.16)" stroke="rgba(255,255,255,.3)" stroke-width="1.5"/>
+      <g class="sweep"><path d="M100 100 L100 14 A86 86 0 0 1 172 55 Z" fill="rgba(108,151,255,.28)"/><line x1="100" y1="100" x2="100" y2="14" stroke="#9DBBFF" stroke-width="2"/></g>
+      <circle cx="132" cy="70" r="5" fill="#FF6B7B"/><circle cx="70" cy="128" r="5" fill="#34D399"/><circle cx="118" cy="144" r="4" fill="#34D399"/><circle cx="74" cy="64" r="4" fill="#FF6B7B"/>
+    </svg>
+  </div>
+
+  <div class="grid g4" id="statCards"></div>
+
+  <div class="grid g-home" style="margin-top:18px">
+    <div class="card">
+      <h3>Fake vs real</h3>
+      <p class="sub">Share of every article analyzed so far</p>
+      <div class="chart-box"><canvas id="homePie"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>How a prediction is made</h3>
+      <p class="sub">The same pipeline runs for the dataset and for your own articles</p>
+      <div class="flow" id="homeFlow"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <div><h3>Recent analyzed news</h3><p class="sub" style="margin:0">Select a row to see why the model decided that way</p></div>
+      <a class="btn sm" href="#history">View all</a>
+    </div>
+    <div class="tbl-wrap"><table><thead><tr><th>News title</th><th>Prediction</th><th>Confidence</th><th>Category</th><th>Date</th></tr></thead><tbody id="recentBody"></tbody></table></div>
+  </div>
+</section>
+
+<!-- DETECT -->
+<section class="page" id="page-detect">
+  <div class="page-head"><h2>Fake news detection</h2><p>Paste an article or load a text file. The model checks writing style, sourcing and vocabulary, then returns a verdict with a confidence score.</p></div>
+  <div class="detect">
+    <div class="card">
+      <label class="f" for="newsText">News article</label>
+      <textarea id="newsText" placeholder="Paste news article here..."></textarea>
+      <div class="row" style="justify-content:space-between;margin-top:6px"><span class="hint" id="wc">0 words</span><span class="hint">Tip: Ctrl+Enter to analyze</span></div>
+      <label class="f" for="newsUrl" style="margin-top:14px">Source URL (optional)</label>
+      <input type="text" id="newsUrl" placeholder="https://example.com/news/story" autocomplete="off">
+      <div class="err" id="err" role="alert"></div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn primary big" id="analyzeBtn">Analyze news</button>
+        <button class="btn" id="uploadBtn">Upload .txt</button>
+        <input type="file" id="fileIn" accept=".txt,.md,text/plain" class="sr">
+        <button class="btn" id="clearBtn">Clear</button>
+      </div>
+      <div class="row" style="margin-top:14px"><span class="hint">Try a sample:</span>
+        <button class="btn sm" data-sample="real">Real-style report</button>
+        <button class="btn sm" data-sample="fake">Fake-style post</button>
+      </div>
+    </div>
+    <div class="card" id="resultCard" aria-live="polite">
+      <div class="empty">
+        <svg viewBox="0 0 96 96" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity=".55"><circle cx="42" cy="42" r="26"/><path d="M62 62l22 22"/><path d="M30 42h24M30 34h16M30 50h18" opacity=".6"/></svg>
+        <b>Your result will appear here</b>
+        <span>Add an article on the left, then select Analyze news.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ANALYTICS -->
+<section class="page" id="page-analytics">
+  <div class="page-head"><h2>Analytics</h2><p>Charts below are computed from a simulated news dataset of about 47,000 raw records, processed in your browser the same way a Pandas script would.</p></div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div><h3>Big data analytics pipeline</h3><p class="sub" style="margin:0">Load, clean, aggregate, analyze and visualize a large news dataset</p></div>
+      <button class="btn primary" id="runPipe">Run pipeline</button>
+    </div>
+    <div class="pipe" id="pipe"></div>
+    <div class="log" id="pipeLog" aria-live="polite"></div>
+  </div>
+
+  <div class="grid g2" style="margin-top:18px">
+    <div class="card"><h3>Fake vs real news</h3><p class="sub">All cleaned records</p><div class="chart-box"><canvas id="anPie"></canvas></div></div>
+    <div class="card"><h3>News by category</h3><p class="sub">Which topics attract the most misleading stories</p><div class="chart-box"><canvas id="catChart"></canvas></div></div>
+    <div class="card" style="grid-column:1/-1"><h3>Fake news trend by date</h3><p class="sub" id="trendSub">Daily article counts for the last 30 days, with visible spikes around major events</p><div class="chart-box"><canvas id="trendChart"></canvas></div></div>
+    <div class="card"><h3>Dataset statistics</h3><p class="sub">After cleaning</p><div class="kv" id="dsStats"></div></div>
+    <div class="card"><h3>Model performance</h3><p class="sub">Simulated predictions on the 20% test split</p>
+      <div class="cm" id="cm"></div><div class="mini" id="miniMetrics"></div>
+    </div>
+    <div class="card" style="grid-column:1/-1"><h3>Statistical summary</h3><p class="sub">Mean, median and standard deviation of writing-style features per class</p>
+      <div class="tbl-wrap"><table><thead><tr><th>Feature</th><th>Class</th><th>Mean</th><th>Median</th><th>Std dev</th></tr></thead><tbody id="statTbl"></tbody></table></div>
+    </div>
+  </div>
+</section>
+
+<!-- HISTORY -->
+<section class="page" id="page-history">
+  <div class="page-head"><h2>History</h2><p>Every article you analyze is saved here in this browser, alongside the sample articles.</p></div>
+  <div class="card">
+    <div class="filters">
+      <div class="search"><label class="sr" for="hq">Search</label><input type="search" id="hq" placeholder="Search by title, source or category"></div>
+      <div><label class="sr" for="hp">Prediction</label><select id="hp"><option value="">All predictions</option><option value="REAL">Real only</option><option value="FAKE">Fake only</option></select></div>
+      <div><label class="sr" for="hc">Category</label><select id="hc"><option value="">All categories</option></select></div>
+      <div><label class="sr" for="hs">Sort</label><select id="hs"><option value="date">Newest first</option><option value="old">Oldest first</option><option value="conf">Highest confidence</option><option value="low">Lowest confidence</option></select></div>
+    </div>
+    <div class="tbl-wrap"><table><thead><tr><th>News title</th><th>Prediction</th><th>Confidence</th><th>Category</th><th>Date</th></tr></thead><tbody id="histBody"></tbody></table></div>
+    <div class="pager"><span class="hint" id="histCount"></span>
+      <div class="row"><button class="btn sm" id="clearUser">Clear my analyses</button><button class="btn sm" id="prevP">Previous</button><span class="hint" id="pgInfo"></span><button class="btn sm" id="nextP">Next</button></div></div>
+  </div>
+</section>
+
+<!-- ABOUT -->
+<section class="page prose" id="page-about">
+  <div class="page-head"><h2>About TruthLens</h2><p>A CSE mini project that combines machine learning with big data analytics to flag misleading news.</p></div>
+  <div class="grid g2">
+    <div class="card"><h3>Problem statement</h3><p>False stories spread faster than corrections on social media and messaging apps. Readers rarely have time to verify each claim, and manual fact-checking cannot keep up with the volume of new articles. A system is needed that screens text automatically and shows readers why an article looks suspicious.</p></div>
+    <div class="card"><h3>Objectives</h3><ul>
+      <li>Classify a news article as REAL or FAKE with a confidence score.</li>
+      <li>Explain each decision with the words and patterns that influenced it.</li>
+      <li>Process a large news dataset: clean, aggregate and analyze it.</li>
+      <li>Present trends in an interactive analytics dashboard.</li>
+      <li>Keep every article in a searchable history.</li></ul></div>
+  </div>
+  <div class="card" style="margin-top:18px"><h3>How the system works</h3><p class="sub">From dataset or user input to the analytics dashboard</p><div class="flow h" id="aboutFlow"></div></div>
+
+  <div class="card" style="margin-top:18px"><h3>Big data analytics concept</h3>
+    <p>Big data describes datasets too large or varied for manual inspection. News is a natural fit, because millions of articles are published every day. TruthLens applies the four classic dimensions to this problem.</p>
+    <div class="v4"><div><b>Volume</b><span>Tens of thousands of articles per training run.</span></div><div><b>Variety</b><span>Many sources, topics, lengths and writing styles.</span></div><div><b>Velocity</b><span>New articles arrive continuously and need quick screening.</span></div><div><b>Veracity</b><span>The central question: is the content trustworthy?</span></div></div>
+    <p style="margin-top:14px">The analytics workflow has five steps, shown live on the Analytics page: <b>load</b> the raw dataset, <b>clean</b> it (duplicates, missing values, empty text), <b>aggregate</b> by category, source and date, run <b>statistical analysis</b> (mean, median, standard deviation, confusion matrix) and <b>visualize</b> the results. A college-scale version needs only Pandas on a laptop. Hadoop, Kafka or Spark are optional later upgrades.</p>
+  </div>
+
+  <div class="card" style="margin-top:18px"><h3>Technologies used</h3>
+    <div class="tech" style="margin-top:12px">
+      <div><b>Python Flask</b><span>Backend API for prediction and history</span></div>
+      <div><b>Scikit-learn</b><span>TF-IDF features and the classifier</span></div>
+      <div><b>Pandas</b><span>Cleaning, aggregation and statistics</span></div>
+      <div><b>SQLite</b><span>Stores analyzed articles and results</span></div>
+      <div><b>Chart.js</b><span>Interactive charts</span></div>
+      <div><b>HTML, CSS, JavaScript</b><span>Responsive single-page interface</span></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px"><h3>What this prototype does</h3>
+    <div class="note" style="margin-top:10px">Everything runs in the browser so the demo works anywhere. The detector is a Naive Bayes model trained on 30 sample articles, combined with style rules (sensational phrases, ALL-CAPS, exclamation marks, attribution). The 47,000-row dataset and its accuracy figures are simulated. Replace them with a real dataset and a scikit-learn model for your final submission.</div>
+    <p style="margin-top:14px">A starting point for the real backend:</p>
+<pre>
+# train.py
+import pandas as pd, joblib
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import make_pipeline
+from sklearn.model_selection import train_test_split
+
+df = pd.read_csv("news.csv").dropna().drop_duplicates()
+X_tr, X_te, y_tr, y_te = train_test_split(df.text, df.label, test_size=0.2)
+model = make_pipeline(TfidfVectorizer(stop_words="english", max_features=50000),
+                      LogisticRegression(max_iter=1000))
+model.fit(X_tr, y_tr)
+print("accuracy:", model.score(X_te, y_te))
+joblib.dump(model, "model.pkl")
+
+# app.py
+from flask import Flask, request, jsonify
+import joblib
+app, model = Flask(__name__), joblib.load("model.pkl")
+
+@app.post("/predict")
+def predict():
+    text = request.json["text"]
+    p = model.predict_proba([text])[0]
+    return jsonify(label=model.classes_[p.argmax()], confidence=float(p.max()))
+</pre>
+  </div>
+</section>
+</main>
+
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle"><div class="box" id="modalBox"></div></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* ===== TruthLens in-browser model: Naive Bayes + stylistic features ===== */
+const STOP = new Set("the a an and or but of to in on for with at by from as is are was were be been it its this that these those he she they we you his her their our your not will would can could has have had do does did said also than then there here about after before over under into out just more most very who what which when how all any one two new".split(" "));
+const SENS = ["shocking","breaking","you won'?t believe","unbelievable","mind-?blowing","miracle","secret(ly)?","expos(e|ed|es|ing)","cover-?up","hoax","banned","leaked?","they don'?t want you","doctors don'?t","wake up","share (this|before|now)","before (it|they)","mainstream media","(media|authorities) (won'?t|refuses?|is silent|silence)","anonymous","insiders?","guaranteed","click (here|now|to)","free (iphone|gift|money)","giveaway","rigged","bombshell","scandal","hidden","whistleblower","one weird trick","get rich","overnight","you will be (shocked|amazed)","silenc(e|ed)","cures? (all|every|cancer)","burns? (belly )?fat","explosive","urgent","only \\d+ left","aliens?","microchips?","stunned","censor(ed|ship)?","elites?","panick?(ing)?","mysterious","viral","withdraw everything","collapse","you'?ll be shocked","bribed"];
+const CRED = ["according to","said","percent","reports?|reported","study","published","ministry","spokes(person|man|woman)","officials?","journal","statement","analysts?","surveyed?","data","peer-?reviewed","researchers?","announced","commission","agency","university","cautioned","observational","pending","parliament","statistics","quarter(ly)?","organisers?"];
+const mkRe = a => a.map(p => new RegExp("\\b(" + p + ")\\b", "gi"));
+const SENS_RE = mkRe(SENS), CRED_RE = mkRe(CRED);
+const CATS = {
+  Politics: "government minister election parliament president vote voter party bill senate policy opposition law court commission leaders",
+  Health: "health doctor doctors vaccine vaccines disease cure cures hospital hospitals flu cancer fat diet blood medical pressure patients",
+  Technology: "phone app chip chips software tech internet hack iphone processor electric bus computing digital",
+  Sports: "match team player league goal coach squad referee tournament qualifiers season",
+  Business: "bank banks market sales economy retail shares airline inflation rate rates money rich quarter trade millionaire cash",
+  Entertainment: "actor film films singer festival celebrity star movie music marriage director",
+  Science: "scientists space moon lunar research researchers coral marine orbiter planet climate",
+  World: "countries regional flood relief international border summit pact"
+};
+const CAT_SETS = Object.entries(CATS).map(([k, v]) => [k, new Set(v.split(" "))]);
+function tokenize(t) { return t.toLowerCase().replace(/[^a-z0-9' ]+/g, " ").split(/\s+/).filter(w => w.length > 2 && !STOP.has(w) && !/^\d+$/.test(w)); }
+function detectCategory(text) {
+  const toks = tokenize(text); let best = "General", bs = 0;
+  for (const [k, set] of CAT_SETS) { let s = 0; for (const w of toks) if (set.has(w)) s++; if (s > bs) { bs = s; best = k; } }
+  return best;
+}
+function train(docs) {
+  const m = { f: new Map(), r: new Map(), nf: 0, nr: 0, tf: 0, tr: 0, vocab: new Set() };
+  for (const d of docs) {
+    const side = d.label === "FAKE" ? "f" : "r";
+    m[side === "f" ? "nf" : "nr"]++;
+    for (const w of tokenize(d.title + " " + d.text)) {
+      m[side].set(w, (m[side].get(w) || 0) + 1); m[side === "f" ? "tf" : "tr"]++; m.vocab.add(w);
+    }
+  }
+  return m;
+}
+function ratio(m, w) {
+  const V = m.vocab.size + 1;
+  return Math.log(((m.f.get(w) || 0) + 1) / (m.tf + V)) - Math.log(((m.r.get(w) || 0) + 1) / (m.tr + V));
+}
+function matchAll(res, text) {
+  const hits = [];
+  for (const re of res) { re.lastIndex = 0; let x; while ((x = re.exec(text))) { hits.push(x[0].toLowerCase()); if (x[0].length === 0) re.lastIndex++; } }
+  return hits;
+}
+const uniq = a => [...new Set(a)];
+function analyze(text, m) {
+  const words = (text.match(/[A-Za-z0-9']+/g) || []);
+  const wc = words.length;
+  const sensHits = uniq(matchAll(SENS_RE, text)), credHits = uniq(matchAll(CRED_RE, text));
+  const excl = (text.match(/!/g) || []).length;
+  const caps = uniq((text.match(/\b[A-Z]{4,}\b/g) || []));
+  const capsAll = (text.match(/\b[A-Z]{4,}\b/g) || []).length;
+  const nums = (text.match(/\b\d[\d,.]*%?/g) || []).length;
+  const quotesAttrib = /according to|said|told|reported|announced/i.test(text);
+  // Naive Bayes component
+  const toks = tokenize(text).filter(w => m.vocab.has(w));
+  let nb = 0;
+  if (toks.length) { nb = toks.reduce((s, w) => s + ratio(m, w), 0) / toks.length; nb = Math.max(-1.5, Math.min(1.5, nb * 4)); }
+  let z = -0.1 + nb;
+  z += 1.15 * Math.min(sensHits.length, 4);
+  z -= 0.55 * Math.min(credHits.length, 6);
+  z += 0.5 * Math.min(excl, 3);
+  z += 0.45 * Math.min(capsAll, 3);
+  z -= 0.25 * Math.min(nums, 4);
+  if (wc < 20) z += 0.6;
+  if (!quotesAttrib) z += 0.5;
+  const pFake = 1 / (1 + Math.exp(-z));
+  const label = pFake >= 0.5 ? "FAKE" : "REAL";
+  const conf = Math.round(Math.min(99, Math.max(51, 100 * Math.max(pFake, 1 - pFake))) * 10) / 10;
+  // influential model terms
+  const seen = new Set(), infl = [];
+  for (const w of toks) { if (seen.has(w)) continue; seen.add(w); infl.push([w, ratio(m, w)]); }
+  infl.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+  const topTerms = infl.slice(0, 6).map(([w, r]) => ({ term: w, side: r > 0 ? "FAKE" : "REAL" }));
+  // explanation
+  const reasons = [];
+  if (sensHits.length) reasons.push(`Found ${sensHits.length} sensational or clickbait ${sensHits.length === 1 ? "phrase" : "phrases"} such as “${sensHits.slice(0, 3).join("”, “")}”.`);
+  if (excl >= 2 || capsAll >= 2) reasons.push(`Emotional formatting: ${excl} exclamation mark${excl === 1 ? "" : "s"} and ${capsAll} ALL-CAPS word${capsAll === 1 ? "" : "s"}.`);
+  if (!quotesAttrib) reasons.push("No clear attribution to a named person, institution, or report.");
+  if (wc < 20) reasons.push("Very short text, so there is little verifiable detail.");
+  if (credHits.length >= 2) reasons.push(`Uses reporting language that points to sources (${credHits.slice(0, 4).join(", ")}).`);
+  if (nums >= 2) reasons.push(`Contains ${nums} specific figures or dates, typical of verifiable reporting.`);
+  if (!sensHits.length && excl === 0) reasons.push("The tone is neutral and measured, with no clickbait wording.");
+  const summary = label === "FAKE"
+    ? "The writing style matches patterns common in misleading articles: emotional wording, vague sourcing, and few checkable facts."
+    : "The article reads like conventional reporting: attributed claims, specific details, and a neutral tone.";
+  return { label, conf, pFake, z, sensHits, credHits, caps, excl, capsAll, nums, wc, topTerms, reasons, summary, category: detectCategory(text) };
+}
+
+const SEED = [
+["Parliament passes revised education funding bill after three-day debate","The lower house passed the revised education funding bill on Tuesday by 312 votes to 198 after a three-day debate. According to the finance ministry, the bill allocates an additional 4 percent to public schools next year. The opposition said it would review the measure in committee.","REAL","Politics","National Wire","2026-09-29"],
+["Health ministry reports decline in seasonal flu cases this month","The health ministry said on Monday that reported flu cases fell 12 percent compared with last month, according to its weekly surveillance report. Officials attributed the decline to higher vaccination coverage and urged residents to stay vaccinated. The report covered data from 420 hospitals.","REAL","Health","Civic Times","2026-09-28"],
+["Researchers publish study on energy-efficient processor design","A university research team published a peer-reviewed study describing a processor design that cut power use by about 18 percent in benchmark tests. The paper, released in a journal on Thursday, notes that the results come from simulation and need further validation. The authors said commercial use is several years away.","REAL","Technology","Science Digest","2026-09-26"],
+["Home side wins league opener 2-1 with late goal","The home side won its league opener 2-1 on Saturday, scoring the winning goal in the 88th minute. The coach said after the match that the team had worked on set pieces during pre-season. Attendance was reported as 28,400.","REAL","Sports","Sports Desk","2026-09-27"],
+["Retail sales rose 3.2 percent in third quarter, statistics office says","Retail sales rose 3.2 percent in the third quarter, the statistics office said in a report published Friday. Analysts surveyed had expected growth of about 2.8 percent. The office noted that online sales accounted for 26 percent of the total.","REAL","Business","Daily Ledger","2026-09-25"],
+["Space agency confirms launch window for lunar orbiter","The space agency confirmed on Wednesday that its lunar orbiter will launch in March, pending final safety reviews. A spokesperson said the mission will map surface minerals over two years. The agency added that the schedule could change because of weather.","REAL","Science","Science Digest","2026-09-24"],
+["Nine countries agree to extend regional trade pact for five years","Representatives from nine countries signed an agreement on Monday to extend the regional trade pact for five years. The joint statement said the text lowers tariffs on agricultural goods. Ratification by each national legislature is still required, officials said.","REAL","World","Global Tribune","2026-09-22"],
+["Film festival announces lineup of 40 features","Organisers of the annual film festival announced a lineup of 40 feature films on Tuesday, including 12 debut directors. The festival runs for ten days starting next month. Tickets go on sale this week, according to the festival website.","REAL","Entertainment","Metro Herald","2026-09-23"],
+["Study links daily walking to modestly lower blood pressure","A study of 5,200 adults published in a medical journal found that those who walked 30 minutes a day had modestly lower blood pressure. The researchers cautioned that the study was observational and cannot prove cause and effect. They recommended speaking to a doctor before changing exercise routines.","REAL","Health","Science Digest","2026-09-21"],
+["Election commission releases regional voter turnout figures","The election commission said turnout in the regional election was 61.4 percent, up from 58.9 percent in the previous vote. A spokesperson said results will be certified within seven days. Observers reported no major irregularities, according to the commission's statement.","REAL","Politics","National Wire","2026-09-20"],
+["City launches pilot for electric bus fleet on three routes","The city transport authority announced on Thursday a pilot of 30 electric buses on three routes. Officials said the pilot will run for six months and that data on charging costs will be published afterwards. The project is funded by a state grant of 4.5 million.","REAL","Technology","Civic Times","2026-09-19"],
+["Airline reports narrower quarterly loss as fuel costs ease","The airline reported a quarterly loss of 41 million, down from 67 million a year earlier, according to its results statement. The chief financial officer said lower fuel prices and higher passenger numbers helped. Analysts said the outlook remains uncertain.","REAL","Business","Daily Ledger","2026-09-18"],
+["National team names squad for upcoming qualifiers","The national team coach named a 23-player squad on Monday for two qualifying matches this month. Three uncapped players were included, the federation said in a statement. The team plays its first match on 10 October.","REAL","Sports","Sports Desk","2026-09-17"],
+["Relief supplies reach flood-hit districts, officials say","Relief supplies reached four flood-affected districts on Sunday, district officials said. About 6,000 families have been moved to shelters, according to the disaster management agency. Authorities said water levels are expected to recede over the next three days.","REAL","World","Global Tribune","2026-09-16"],
+["SHOCKING: Doctors don't want you to know this one weird trick that cures all diseases!","You won't believe what they are hiding! A secret miracle cure has been banned by big pharma for decades, and insiders say it ends every disease in days. Share this before it gets deleted!!! Mainstream media refuses to report it.","FAKE","Health","Viral Buzz","2026-09-30"],
+["BREAKING: Leaked document PROVES election was rigged by shadowy elites","A leaked document that the government doesn't want you to see proves everything was rigged. Anonymous sources say the elites are panicking. WAKE UP people! Share this now before they censor it.","FAKE","Politics","Truth Patriot","2026-09-29"],
+["Your phone is secretly spying on you and the company just admitted it","Unnamed experts claim every phone is recording your thoughts at night. The cover-up is massive and the media is silent. Delete this app immediately or you will be hacked, they warn!","FAKE","Technology","Insider24","2026-09-28"],
+["Famous actor dead at 45? You won't believe the truth","Rumours are exploding online that the star has died in a mysterious accident. Sources close to the family who asked not to be named say the truth is being covered up. Click here to see the shocking photos!","FAKE","Entertainment","ShockPost","2026-09-27"],
+["Banks will collapse tomorrow, millionaire warns: withdraw everything now","A millionaire insider has exposed a hidden plan to collapse every bank overnight. Withdraw everything NOW before it is too late! The government is hiding the truth and the media won't tell you.","FAKE","Business","World Exposed","2026-09-26"],
+["Scientists confirm the moon is hollow and aliens live inside","Mind-blowing leaked photos prove aliens built the moon. A whistleblower claims space agencies have silenced witnesses for years. This bombshell changes everything, share it!!!","FAKE","Science","ShockPost","2026-09-25"],
+["Government plans to ban all cash overnight, leaked memo reveals","A secret memo leaked by anonymous insiders reveals that cash will be banned overnight. Citizens are urged to act now. Mainstream outlets refuse to cover this explosive story.","FAKE","World","Truth Patriot","2026-09-24"],
+["This miracle fruit burns belly fat in 3 days, guaranteed!","Doctors are stunned by this miracle fruit that burns belly fat in just three days, guaranteed! Click here to get yours free. Only 50 left and the offer ends tonight!!!","FAKE","Health","Viral Buzz","2026-09-23"],
+["Unbelievable! Star player secretly bribed referee, insiders claim","Insiders claim the star player bribed the referee in a hidden deal that rigged the final. The league is panicking and trying to cover up the scandal. Fans must share this before it disappears!","FAKE","Sports","Insider24","2026-09-22"],
+["Minister caught in explosive scandal the media won't tell you about","A shocking scandal has exposed the minister, but the media is silent. Anonymous sources say the truth is being hidden by elites. Wake up and spread the word!","FAKE","Politics","World Exposed","2026-09-21"],
+["Free iPhone giveaway: click now, only 100 left","Click here to claim your free iPhone in this limited giveaway. Only 100 left! Enter your details now before the offer is gone. Guaranteed winners, no catch!!!","FAKE","Technology","ShockPost","2026-09-20"],
+["Vaccines contain microchips, whistleblower exposes the truth","A whistleblower has exposed the secret microchips hidden inside every vaccine. Authorities have silenced the story. Share this to save your family before it is censored!","FAKE","Health","Truth Patriot","2026-09-19"],
+["Singer's secret marriage exposed: you will be shocked","You will be shocked by the mysterious truth behind the singer's hidden marriage. Insiders reveal the secret that fans were never meant to see. Click to read the bombshell!","FAKE","Entertainment","Viral Buzz","2026-09-18"],
+["Hidden city found under ice, authorities silence witnesses","Explorers uncovered a hidden city under the ice, but authorities have silenced every witness. Anonymous sources say aliens were involved. The mainstream media is covering it up!","FAKE","World","World Exposed","2026-09-17"],
+["Get rich in 24 hours with this banned money trick","Banks don't want you to know this banned trick that makes you rich overnight. It is guaranteed and a secret millionaire exposed it! Click here now before it is deleted!","FAKE","Business","Insider24","2026-09-16"],
+["Drinking hot water cures cancer, experts stunned","Experts are stunned by the miracle of hot water, which cures cancer in days according to unnamed insiders. Big pharma is hiding this secret. Share before the truth gets banned!!!","FAKE","Health","Viral Buzz","2026-09-15"]
+].map(([title,text,label,category,source,date],i)=>({id:i+1,title,text,label,category,source,date}));
+
+</script>
+<script>
+/* ================= helpers ================= */
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = n => Math.round(n).toLocaleString("en-US");
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmtDate = iso => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); };
+const isoLocal = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 2200); }
+function countUp(el, to, opts = {}) {
+  const dec = opts.dec || 0, suf = opts.suf || "", dur = 900, t0 = performance.now();
+  const step = t => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); el.textContent = (to * e).toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec }) + suf; if (k < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+
+/* ================= simulated big dataset + pipeline ================= */
+function rng(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const R = rng(20261002);
+const wpick = list => { const tot = list.reduce((s, x) => s + x[1], 0); return () => { let r = R() * tot; for (const x of list) { if ((r -= x[1]) <= 0) return x[0]; } return list[list.length - 1][0]; }; };
+const gauss = () => Math.sqrt(-2 * Math.log(R() || 1e-9)) * Math.cos(2 * Math.PI * R());
+const REAL_SRC = [["Daily Ledger", 10], ["National Wire", 10], ["Civic Times", 8], ["Global Tribune", 8], ["Metro Herald", 6], ["Science Digest", 4], ["Sports Desk", 6]];
+const FAKE_SRC = [["Insider24", 12], ["Viral Buzz", 12], ["ShockPost", 10], ["Truth Patriot", 9], ["World Exposed", 9]];
+const pickRS = wpick(REAL_SRC), pickFS = wpick(FAKE_SRC);
+const pickFC = wpick([["Politics", 26], ["Health", 22], ["Entertainment", 16], ["Technology", 10], ["World", 10], ["Business", 7], ["Science", 5], ["Sports", 4]]);
+const pickRC = wpick([["Politics", 22], ["Business", 20], ["World", 18], ["Sports", 12], ["Technology", 10], ["Health", 8], ["Science", 6], ["Entertainment", 4]]);
+const pickFK = wpick([["shocking", 9], ["secret", 8], ["breaking", 8], ["truth", 7], ["exposed", 7], ["miracle", 6], ["leaked", 6], ["hoax", 5], ["banned", 5], ["cover-up", 5], ["insiders", 4], ["rigged", 4], ["scandal", 4], ["bombshell", 3], ["viral", 3]]);
+const pickRK = wpick([["government", 9], ["report", 9], ["percent", 8], ["officials", 8], ["minister", 6], ["study", 6], ["market", 6], ["announced", 6], ["statement", 5], ["policy", 5], ["election", 5], ["researchers", 5], ["economy", 4], ["court", 4], ["hospital", 3]]);
+const bump = off => 0.16 * Math.exp(-Math.pow(off - 6, 2) / 8) + 0.14 * Math.exp(-Math.pow(off - 21, 2) / 8) + 0.12 * Math.exp(-Math.pow(off - 55, 2) / 10);
+const END = Date.UTC(2026, 9, 1);
+const dayLabel = off => new Date(END - off * 864e5).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
+function generateRaw(N) {
+  const rows = [];
+  for (let i = 0; i < N; i++) {
+    const off = Math.floor(R() * 90), fake = R() < 0.45 + bump(off) ? 1 : 0;
+    const src = R() < 0.93 ? (fake ? pickFS() : pickRS()) : (fake ? pickRS() : pickFS());
+    const test = R() < 0.2; let pred = fake;
+    if (test && R() > (fake ? 0.958 : 0.969)) pred = 1 - fake;
+    rows.push({
+      id: i + 1, label: fake, src, cat: fake ? pickFC() : pickRC(), off,
+      words: Math.max(fake ? 30 : 60, Math.round((fake ? 380 : 620) + gauss() * (fake ? 160 : 220))),
+      excl: fake ? Math.max(0, Math.round(2.4 + gauss() * 2)) : (R() < 0.12 ? 1 : 0),
+      caps: fake ? Math.max(0, Math.round(3.2 + gauss() * 2.5)) : (R() < 0.2 ? 1 : 0),
+      kw: [fake ? pickFK() : pickRK(), fake ? pickFK() : pickRK()], test, pred
+    });
+  }
+  const clean = rows.length;
+  for (let i = 0; i < 1320; i++) rows.push(rows[Math.floor(R() * clean)]);                                   // duplicates
+  for (let i = 0; i < 380; i++) rows.push({ id: 900000 + i, cat: null, off: null, words: 300, label: 0, src: "Daily Ledger", kw: [] }); // missing fields
+  for (let i = 0; i < 240; i++) rows.push({ id: 950000 + i, cat: "World", off: 3, words: 4, label: 1, src: "ShockPost", kw: [] });          // empty articles
+  return rows;
+}
+const mean = a => a.reduce((s, x) => s + x, 0) / (a.length || 1);
+const median = a => { const b = [...a].sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+const std = a => { const m = mean(a); return Math.sqrt(mean(a.map(x => (x - m) ** 2))); };
+
+function runAnalytics(raw) {
+  const seen = new Set(); let dup = 0, nul = 0, short = 0; const clean = [];
+  for (const r of raw) {
+    if (seen.has(r.id)) { dup++; continue; } seen.add(r.id);
+    if (r.cat == null || r.off == null) { nul++; continue; }
+    if (r.words < 10) { short++; continue; }
+    clean.push(r);
+  }
+  const A = { raw: raw.length, dup, nul, short, total: clean.length, fake: 0, real: 0, byCat: {}, bySrc: {}, byDay: Array.from({ length: 90 }, () => [0, 0]), kw: { fake: new Map(), real: new Map() }, hist: { fake: Array(13).fill(0), real: Array(13).fill(0) }, v: { fake: { words: [], excl: [], caps: [] }, real: { words: [], excl: [], caps: [] } }, cm: { tp: 0, fn: 0, fp: 0, tn: 0 }, testN: 0 };
+  for (const r of clean) {
+    const k = r.label ? "fake" : "real";
+    A[k]++;
+    (A.byCat[r.cat] = A.byCat[r.cat] || { fake: 0, real: 0 })[k]++;
+    (A.bySrc[r.src] = A.bySrc[r.src] || { fake: 0, real: 0 })[k]++;
+    A.byDay[r.off][r.label ? 0 : 1]++;
+    for (const w of r.kw) A.kw[k].set(w, (A.kw[k].get(w) || 0) + 1);
+    A.hist[k][Math.min(12, Math.floor(r.words / 100))]++;
+    A.v[k].words.push(r.words); A.v[k].excl.push(r.excl); A.v[k].caps.push(r.caps);
+    if (r.test) { A.testN++; if (r.label && r.pred) A.cm.tp++; else if (r.label) A.cm.fn++; else if (r.pred) A.cm.fp++; else A.cm.tn++; }
+  }
+  const { tp, fn, fp, tn } = A.cm;
+  A.acc = (tp + tn) / A.testN * 100; A.prec = tp / (tp + fp); A.rec = tp / (tp + fn); A.f1 = 2 * A.prec * A.rec / (A.prec + A.rec);
+  return A;
+}
+const AG = runAnalytics(generateRaw(45000));
+function unifyAG() {   // fields shared by simulated data and data from the Flask API
+  if (AG.byDay) {
+    const offs = Array.from({ length: 30 }, (_, i) => 29 - i);
+    AG.trend = { labels: offs.map(dayLabel), fake: offs.map(o => AG.byDay[o][0]), real: offs.map(o => AG.byDay[o][1]), sub: "Daily article counts for the last 30 days, with visible spikes around major events" };
+    AG.periods = "90 days";
+    AG.avgWords = { fake: mean(AG.v.fake.words), real: mean(AG.v.real.words) };
+    AG.featStats = [];
+    for (const [nm, key] of [["Words", "words"], ["Exclamation marks", "excl"], ["ALL-CAPS words", "caps"]]) for (const k of ["fake", "real"]) { const a = AG.v[k][key]; AG.featStats.push({ name: nm, cls: k, mean: mean(a), median: median(a), std: std(a) }); }
+  }
+}
+unifyAG();
+
+/* ================= model + history data ================= */
+const FINAL_MODEL = train(SEED);
+const SEED_ITEMS = SEED.map((d, i) => {
+  const m = train(SEED.filter((_, j) => j !== i)), r = analyze(d.title + ". " + d.text, m);
+  return { id: "s" + d.id, title: d.title, text: d.text, label: r.label, conf: r.conf, category: d.category, source: d.source, date: d.date, reasons: r.reasons, summary: r.summary, sens: r.sensHits, cred: r.credHits, terms: r.topTerms };
+});
+const KEY = "truthlens_user_v1";
+let USER = [];
+try { USER = JSON.parse(localStorage.getItem(KEY) || "[]"); if (!Array.isArray(USER)) USER = []; } catch (e) { USER = []; }
+const saveUser = () => { try { localStorage.setItem(KEY, JSON.stringify(USER.slice(0, 200))); } catch (e) { } };
+const allItems = () => [...USER, ...SEED_ITEMS];
+const byDateDesc = (a, b) => b.date.localeCompare(a.date);
+
+/* ================= charts ================= */
+const charts = {};
+function themeChart() {
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.color = css("--muted"); Chart.defaults.borderColor = css("--line");
+}
+function mk(id, cfg) {
+  if (charts[id]) charts[id].destroy();
+  const el = document.getElementById(id); if (!el) return;
+  cfg.options = Object.assign({ responsive: true, maintainAspectRatio: false }, cfg.options || {});
+  charts[id] = new Chart(el, cfg);
+}
+const COL = () => ({ real: css("--real"), fake: css("--fake"), accent: css("--accent"), surface: css("--surface") });
+function pieCfg(fake, real) {
+  const c = COL();
+  return { type: "doughnut", data: { labels: ["Real", "Fake"], datasets: [{ data: [real, fake], backgroundColor: [c.real, c.fake], borderColor: c.surface, borderWidth: 3, hoverOffset: 8 }] },
+    options: { cutout: "64%", plugins: { legend: { position: "bottom", labels: { usePointStyle: true, padding: 16 } }, tooltip: { callbacks: { label: x => ` ${x.label}: ${fmt(x.parsed)} (${(x.parsed / (fake + real) * 100).toFixed(1)}%)` } } } } };
+}
+const totals = () => ({ fake: AG.fake + USER.filter(u => u.label === "FAKE").length, real: AG.real + USER.filter(u => u.label === "REAL").length });
+
+/* ================= shared renderers ================= */
+const FLOW = [
+  ["News dataset or user input", "Raw articles from the dataset or text you paste", '<path d="M4 6h16M4 12h16M4 18h10"/>'],
+  ["Data preprocessing", "Lowercase, strip links and symbols, remove stop words", '<path d="M4 5h16l-6 8v6l-4-2v-4z"/>'],
+  ["Feature extraction", "Word counts, sensational phrases, caps and punctuation", '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>'],
+  ["Machine learning model", "Naive Bayes scores combined with style rules", '<rect x="5" y="5" width="14" height="14" rx="3"/><path d="M9 9h6v6H9z"/>'],
+  ["Fake or real prediction", "Verdict plus a confidence score and explanation", '<path d="M5 12.5l4.5 4.5L19 7.5"/>'],
+  ["Analytics dashboard", "Totals, trends, sources and keywords", '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>']
+];
+function flowHTML() { return FLOW.map(f => `<div class="st"><div class="dot"><svg viewBox="0 0 24 24">${f[2]}</svg></div><div><b>${f[0]}</b><span>${f[1]}</span></div></div>`).join(""); }
+$("#homeFlow").innerHTML = flowHTML(); $("#aboutFlow").innerHTML = flowHTML();
+
+function rowHTML(it) {
+  const real = it.label === "REAL", c = real ? "var(--real)" : "var(--fake)";
+  return `<tr class="click" tabindex="0" data-id="${esc(it.id)}"><td class="title">${esc(it.title)}</td>
+  <td><span class="badge ${real ? "real" : "fake"}">${real ? "Real" : "Fake"}</span></td>
+  <td><div class="conf"><i style="--w:${it.conf}%;--c:${c}"></i><span>${it.conf.toFixed(1)}%</span></div></td>
+  <td><span class="tag">${esc(it.category)}</span></td><td>${fmtDate(it.date)}</td></tr>`;
+}
+function bindRows(tb) {
+  tb.querySelectorAll("tr.click").forEach(tr => {
+    const open = () => openModal(tr.dataset.id);
+    tr.addEventListener("click", open); tr.addEventListener("keydown", e => { if (e.key === "Enter") open(); });
+  });
+}
+function chipsHTML(it) {
+  let h = "";
+  if (it.sens && it.sens.length) h += `<h4>Suspicious phrases</h4><div class="chips">${it.sens.slice(0, 12).map(w => `<span class="chip s">${esc(w)}</span>`).join("")}</div>`;
+  if (it.cred && it.cred.length) h += `<h4>Credibility signals</h4><div class="chips">${it.cred.slice(0, 12).map(w => `<span class="chip c">${esc(w)}</span>`).join("")}</div>`;
+  if (it.terms && it.terms.length) h += `<h4>Terms that moved the model</h4><div class="chips">${it.terms.map(t => `<span class="chip n">${esc(t.term)} <small>(${t.side.toLowerCase()})</small></span>`).join("")}</div>`;
+  if (!h) h = `<p class="hint">No strong keywords were found in this text.</p>`;
+  return h;
+}
+function highlight(text) {
+  const t = text.length > 900 ? text.slice(0, 900) + "…" : text, rg = [];
+  const scan = (list, cls) => { for (const re of list) { re.lastIndex = 0; let x; while ((x = re.exec(t))) { if (!x[0]) { re.lastIndex++; continue; } rg.push([x.index, x.index + x[0].length, cls]); } } };
+  scan(SENS_RE, "s"); scan(CRED_RE, "c");
+  const capRe = /\b[A-Z]{4,}\b/g; let x; while ((x = capRe.exec(t))) rg.push([x.index, x.index + x[0].length, "s"]);
+  rg.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+  let out = "", pos = 0;
+  for (const [s, e, c] of rg) { if (s < pos) continue; out += esc(t.slice(pos, s)) + `<mark class="${c}">${esc(t.slice(s, e))}</mark>`; pos = e; }
+  return out + esc(t.slice(pos));
+}
+function resultHTML(it) {
+  const real = it.label === "REAL", C = 2 * Math.PI * 50;
+  const pf = it.label === "FAKE" ? it.conf : 100 - it.conf, pr = 100 - pf;
+  return `<div class="rs"><div class="rise">
+   <div class="verdict ${real ? "real" : "fake"}">
+     <div><div class="vt">${real ? "🟢 REAL" : "🔴 FAKE"}</div><small>${real ? "Likely reliable reporting" : "Likely misleading content"}</small></div>
+     <div class="gauge"><svg viewBox="0 0 120 120"><circle class="tr" cx="60" cy="60" r="50"/><circle class="pr" id="gArc" cx="60" cy="60" r="50" stroke-dasharray="${C}" stroke-dashoffset="${C}"/></svg>
+       <div class="gv"><div><b>${it.conf.toFixed(1)}%</b><br><span>confidence</span></div></div></div>
+   </div>
+   <div class="probs">
+     <div class="prob"><span>Real</span><i><u data-w="${pr}" style="background:var(--real)"></u></i><em>${pr.toFixed(1)}%</em></div>
+     <div class="prob"><span>Fake</span><i><u data-w="${pf}" style="background:var(--fake)"></u></i><em>${pf.toFixed(1)}%</em></div>
+   </div>
+   <div><h4>Why this result</h4><p>${esc(it.summary)}</p><ul>${it.reasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul></div>
+   <div>${chipsHTML(it)}</div>
+   <div><h4>Highlighted text</h4><div class="excerpt">${highlight(it.text)}</div></div>
+  </div></div>`;
+}
+function animateResult(root, it) {
+  const C = 2 * Math.PI * 50, arc = root.querySelector("#gArc");
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (arc) { arc.style.strokeDashoffset = C * (1 - it.conf / 100); arc.style.color = it.label === "REAL" ? css("--real") : css("--fake"); }
+    root.querySelectorAll(".prob u").forEach(u => u.style.width = u.dataset.w + "%");
+  }));
+}
+
+/* ================= pages ================= */
+function renderHome() {
+  const t = totals(), total = t.fake + t.real;
+  const cards = [
+    ["Total news analyzed", total, "", "blue", '<path d="M5 4h11l3 3v13H5z"/><path d="M9 11h6M9 15h6"/>', "Dataset plus your analyses"],
+    ["Fake news", t.fake, "", "red", '<circle cx="12" cy="12" r="9"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7"/>', (t.fake / total * 100).toFixed(1) + "% of all news"],
+    ["Real news", t.real, "", "green", '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>', (t.real / total * 100).toFixed(1) + "% of all news"],
+    ["Detection accuracy", AG.acc, "%", "amber", '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".8"/>', "Held-out test split (simulated)"]
+  ];
+  $("#statCards").innerHTML = cards.map((c, i) => `<div class="card stat"><div class="ic ${c[3]}"><svg viewBox="0 0 24 24">${c[4]}</svg></div><div><div class="lbl">${c[0]}</div><div class="val" id="sv${i}">0</div><div class="cap">${c[5]}</div></div></div>`).join("");
+  cards.forEach((c, i) => countUp($("#sv" + i), c[1], c[2] ? { dec: 1, suf: "%" } : {}));
+  themeChart(); mk("homePie", pieCfg(t.fake, t.real));
+  const rec = allItems().sort(byDateDesc).slice(0, 7);
+  $("#recentBody").innerHTML = rec.map(rowHTML).join(""); bindRows($("#recentBody"));
+}
+
+/* ---- detect ---- */
+const SAMPLES = {
+  real: "The central bank kept its benchmark interest rate unchanged on Thursday, saying inflation had eased to 4.1 percent in September, according to a statement from the monetary policy committee. Analysts surveyed before the announcement had expected the decision. The governor told reporters that the committee will review new data on employment and retail sales before its next meeting in December.",
+  fake: "SHOCKING!!! Doctors don't want you to know this secret miracle trick that melts belly fat overnight, GUARANTEED! Anonymous insiders say big pharma has BANNED it for years and the mainstream media is covering it up. Click here now and share this before it gets deleted!!!"
+};
+const wcount = s => (s.match(/[A-Za-z0-9']+/g) || []).length;
+$("#newsText").addEventListener("input", e => $("#wc").textContent = wcount(e.target.value) + " words");
+$$("[data-sample]").forEach(b => b.addEventListener("click", () => { $("#newsText").value = SAMPLES[b.dataset.sample]; $("#newsText").dispatchEvent(new Event("input")); $("#err").textContent = ""; }));
+$("#clearBtn").addEventListener("click", () => { $("#newsText").value = ""; $("#newsUrl").value = ""; $("#newsText").dispatchEvent(new Event("input")); $("#err").textContent = ""; });
+$("#uploadBtn").addEventListener("click", () => $("#fileIn").click());
+$("#fileIn").addEventListener("change", e => {
+  const f = e.target.files[0]; if (!f) return;
+  const fr = new FileReader();
+  fr.onload = () => { $("#newsText").value = String(fr.result).slice(0, 20000); $("#newsText").dispatchEvent(new Event("input")); toast("Loaded " + f.name); };
+  fr.onerror = () => { $("#err").textContent = "That file could not be read. Try a plain .txt file."; };
+  fr.readAsText(f); e.target.value = "";
+});
+$("#newsText").addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) $("#analyzeBtn").click(); });
+
+const STEPS = ["Cleaning the text", "Extracting features", "Running the classifier", "Scoring confidence"];
+let busy = false;
+$("#analyzeBtn").addEventListener("click", () => {
+  if (busy) return;
+  const text = $("#newsText").value.trim(), url = $("#newsUrl").value.trim(), err = $("#err");
+  err.textContent = "";
+  if (!text) { err.textContent = url ? "This prototype can't fetch a web page from a link. Paste the article text and keep the URL to record the source." : "Paste an article or upload a .txt file first."; $("#newsText").focus(); return; }
+  if (wcount(text) < 8) { err.textContent = "Add at least 8 words so the model has enough to analyze."; return; }
+  let host = "User submitted";
+  if (url) { try { host = new URL(/^https?:/i.test(url) ? url : "https://" + url).hostname.replace(/^www\./, ""); } catch (e) { err.textContent = "That URL doesn't look valid. Use a format like https://example.com/story."; return; } }
+  busy = true; $("#analyzeBtn").disabled = true;
+  const card = $("#resultCard");
+  card.innerHTML = `<div class="scan"><h3>Analyzing article</h3><p class="sub">This takes a couple of seconds</p><div class="lines"><span style="width:96%"></span><span style="width:88%"></span><span style="width:92%"></span><span style="width:60%"></span><span style="width:84%"></span></div><div class="steps">${STEPS.map(s => `<div><i>✓</i>${s}</div>`).join("")}</div></div>`;
+  const rows = [...card.querySelectorAll(".steps div")];
+  rows.forEach((r, i) => { setTimeout(() => { if (i) { rows[i - 1].className = "done"; } r.className = "on"; }, i * 560); });
+  setTimeout(async () => {
+    rows[rows.length - 1].className = "done";
+    let item = null;
+    if (SERVER) { try { item = await serverAnalyze(text, host); } catch (e) { item = null; toast("API unreachable, using the in-browser model"); } }
+    if (!item) item = localAnalyze(text, host);
+    USER.unshift(item); saveUser();
+    setTimeout(() => {
+      card.innerHTML = resultHTML(item) + `<p class="hint" style="margin-top:14px">Saved to History as “${esc(item.title)}”. Category: ${esc(item.category)}. Source: ${esc(item.source)}.</p>`;
+      animateResult(card, item); busy = false; $("#analyzeBtn").disabled = false;
+    }, 450);
+  }, STEPS.length * 560);
+});
+
+function makeTitle(text) {
+  const lines = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
+  let title = lines.length > 1 && lines[0].length <= 120 ? lines[0] : (text.match(/^.{15,}?[.!?](\s|$)/) || [text])[0].trim();
+  return title.length > 90 ? title.slice(0, 87).trimEnd() + "…" : title;
+}
+function localAnalyze(text, host) {
+  const r = analyze(text, FINAL_MODEL);
+  return { id: "u" + Date.now(), title: makeTitle(text), text: text.slice(0, 2000), label: r.label, conf: r.conf, category: r.category, source: host, date: isoLocal(new Date()), reasons: r.reasons, summary: r.summary, sens: r.sensHits, cred: r.credHits, terms: r.topTerms, user: true };
+}
+/* ---- Flask API (used automatically when the page is served by app.py) ---- */
+let SERVER = false;
+async function api(path, opts) { const r = await fetch(path, opts); if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }
+function fromServer(r) {
+  const d = r.detail || {};
+  return { id: "u" + r.id, title: r.title, text: r.text, label: r.label, conf: r.confidence, category: r.category, source: r.source, date: r.date, reasons: d.reasons || [], summary: d.summary || "", sens: d.suspicious || [], cred: d.credible || [], terms: [], user: true };
+}
+async function serverAnalyze(text, host) {
+  const r = await api("/api/predict", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, source: host, title: makeTitle(text) }) });
+  return fromServer(r);
+}
+async function initServer() {
+  try {
+    const a = await api("/api/analytics"); if (!a || !a.total) return;
+    delete AG.byDay; Object.assign(AG, a); AG.periods = a.trend.labels.length + " months";
+    const h = await api("/api/history"); USER = h.map(fromServer);
+    SERVER = true;
+    $("#sideNote").innerHTML = "<b>Connected</b>Predictions come from the scikit-learn model on your Flask server. History is stored in SQLite.";
+    route();
+  } catch (e) { /* no API: stay in prototype mode */ }
+}
+
+/* ---- analytics ---- */
+const PIPE = [
+  { t: "Load dataset", d: () => "Read raw records", m: () => fmt(AG.raw), log: () => `Loaded ${fmt(AG.raw)} raw news records (text length, source, category, date).` },
+  { t: "Clean data", d: () => "Drop bad rows", m: () => fmt(AG.total), log: () => `Removed ${fmt(AG.dup)} duplicates, ${fmt(AG.nul)} rows with missing fields and ${fmt(AG.short)} empty articles. ${fmt(AG.total)} records remain.` },
+  { t: "Aggregate", d: () => "Group and count", m: () => `${Object.keys(AG.byCat).length} categories`, log: () => `Grouped by category (${Object.keys(AG.byCat).length}) and by date (${AG.periods}).` },
+  { t: "Statistical analysis", d: () => "Mean, median, std dev", m: () => "F1 " + AG.f1.toFixed(2), log: () => `Computed descriptive statistics and a confusion matrix on ${fmt(AG.testN)} test records. Accuracy ${AG.acc.toFixed(1)}%.` },
+  { t: "Visualize", d: () => "Charts below", m: () => "3 charts", log: () => "Rendered distribution, category and trend charts." }
+];
+function pipeStatic(upTo) {
+  $("#pipe").innerHTML = PIPE.map((p, i) => `<div class="pst ${i < upTo ? "done" : ""}" id="ps${i}"><b>${p.t}</b><div class="m">${i < upTo ? p.m() : "–"}</div><span>${p.d()}</span></div>`).join("");
+  $("#pipeLog").innerHTML = PIPE.slice(0, upTo).map(p => `<div>✓ ${esc(p.log())}</div>`).join("");
+}
+let pipeBusy = false;
+$("#runPipe").addEventListener("click", async () => {
+  if (pipeBusy) return; pipeBusy = true; $("#runPipe").disabled = true; pipeStatic(0);
+  for (let i = 0; i < PIPE.length; i++) {
+    const s = $("#ps" + i); s.className = "pst on"; s.querySelector(".m").textContent = "Working…";
+    await new Promise(r => setTimeout(r, 650));
+    s.className = "pst done"; s.querySelector(".m").textContent = PIPE[i].m();
+    const l = document.createElement("div"); l.textContent = "✓ " + PIPE[i].log(); $("#pipeLog").appendChild(l); $("#pipeLog").scrollTop = 1e6;
+  }
+  pipeBusy = false; $("#runPipe").disabled = false; toast("Pipeline finished");
+});
+function renderAnalytics() {
+  themeChart(); const c = COL();
+  if (!renderAnalytics.done) { pipeStatic(PIPE.length); renderAnalytics.done = true; }
+  mk("anPie", pieCfg(AG.fake, AG.real));
+  const cats = Object.entries(AG.byCat).sort((a, b) => (b[1].fake + b[1].real) - (a[1].fake + a[1].real));
+  mk("catChart", { type: "bar", data: { labels: cats.map(x => x[0]), datasets: [{ label: "Real", data: cats.map(x => x[1].real), backgroundColor: c.real, borderRadius: 4 }, { label: "Fake", data: cats.map(x => x[1].fake), backgroundColor: c.fake, borderRadius: 4 }] },
+    options: { scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true } }, plugins: { legend: { position: "bottom", labels: { usePointStyle: true } } } } });
+  $("#trendSub").textContent = AG.trend.sub;
+  mk("trendChart", { type: "line", data: { labels: AG.trend.labels, datasets: [
+    { label: "Fake", data: AG.trend.fake, borderColor: c.fake, backgroundColor: c.fake + "22", fill: true, tension: .35, pointRadius: 2, borderWidth: 2.5 },
+    { label: "Real", data: AG.trend.real, borderColor: c.real, borderDash: [5, 4], tension: .35, pointRadius: 0, borderWidth: 2 }] },
+    options: { interaction: { mode: "index", intersect: false }, plugins: { legend: { position: "bottom", labels: { usePointStyle: true } } }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } } } } });
+
+  const tr = Math.round(AG.total * 0.8), kv = [
+    ["Raw records", fmt(AG.raw)], ["Duplicates removed", fmt(AG.dup)], ["Missing-field rows dropped", fmt(AG.nul)], ["Empty articles dropped", fmt(AG.short)],
+    ["Clean records", fmt(AG.total)], ["Fake / real", `${fmt(AG.fake)} / ${fmt(AG.real)}`], ["Class balance (fake)", (AG.fake / AG.total * 100).toFixed(1) + "%"],
+    ["Train / test split", `${fmt(tr)} / ${fmt(AG.total - tr)}`], ["Average words (fake)", fmt(AG.avgWords.fake)], ["Average words (real)", fmt(AG.avgWords.real)]];
+  $("#dsStats").innerHTML = kv.map(x => `<div>${x[0]}</div><div>${x[1]}</div>`).join("");
+  const { tp, fn, fp, tn } = AG.cm;
+  $("#cm").innerHTML = `<div></div><div class="h">Predicted fake</div><div class="h">Predicted real</div>
+    <div class="h">Actually fake</div><div class="cell ok">${fmt(tp)}</div><div class="cell bad">${fmt(fn)}</div>
+    <div class="h">Actually real</div><div class="cell bad">${fmt(fp)}</div><div class="cell ok">${fmt(tn)}</div>`;
+  $("#miniMetrics").innerHTML = [["Accuracy", AG.acc.toFixed(1) + "%"], ["Precision", (AG.prec * 100).toFixed(1) + "%"], ["Recall", (AG.rec * 100).toFixed(1) + "%"], ["F1 score", AG.f1.toFixed(3)]].map(m => `<div><b>${m[1]}</b><span>${m[0]}</span></div>`).join("");
+  const rows = AG.featStats.map(f => `<tr><td>${f.name}</td><td><span class="badge ${f.cls}">${f.cls === "fake" ? "Fake" : "Real"}</span></td><td>${f.mean.toFixed(1)}</td><td>${f.median.toFixed(0)}</td><td>${f.std.toFixed(1)}</td></tr>`);
+  $("#statTbl").innerHTML = rows.join("");
+}
+
+/* ---- history ---- */
+let hp = 1; const PER = 10;
+(function () { const cs = [...new Set(SEED_ITEMS.map(x => x.category).concat(["Politics", "Health", "Technology", "Sports", "Business", "Entertainment", "Science", "World", "General"]))].sort(); $("#hc").innerHTML += cs.map(c => `<option>${esc(c)}</option>`).join(""); })();
+function renderHistory() {
+  const q = $("#hq").value.trim().toLowerCase(), p = $("#hp").value, c = $("#hc").value, s = $("#hs").value;
+  let list = allItems().filter(x => (!p || x.label === p) && (!c || x.category === c) && (!q || (x.title + " " + x.source + " " + x.category).toLowerCase().includes(q)));
+  list.sort(s === "date" ? byDateDesc : s === "old" ? (a, b) => -byDateDesc(a, b) : s === "conf" ? (a, b) => b.conf - a.conf : (a, b) => a.conf - b.conf);
+  const pages = Math.max(1, Math.ceil(list.length / PER)); hp = Math.min(hp, pages);
+  const slice = list.slice((hp - 1) * PER, hp * PER);
+  $("#histBody").innerHTML = slice.length ? slice.map(rowHTML).join("") : `<tr><td colspan="5"><div class="empty"><b>No articles match</b><span>Clear the search or filters, or analyze a new article.</span></div></td></tr>`;
+  bindRows($("#histBody"));
+  $("#histCount").textContent = `${list.length} article${list.length === 1 ? "" : "s"}`; $("#pgInfo").textContent = `Page ${hp} of ${pages}`;
+  $("#prevP").disabled = hp <= 1; $("#nextP").disabled = hp >= pages; $("#clearUser").style.display = USER.length ? "" : "none";
+}
+["#hq", "#hp", "#hc", "#hs"].forEach(id => $(id).addEventListener("input", () => { hp = 1; renderHistory(); }));
+$("#prevP").addEventListener("click", () => { hp--; renderHistory(); });
+$("#nextP").addEventListener("click", () => { hp++; renderHistory(); });
+$("#clearUser").addEventListener("click", () => { if (confirm("Remove the " + USER.length + " article(s) you analyzed? Sample articles stay.")) { USER = []; saveUser(); if (SERVER) fetch("/api/history", { method: "DELETE" }); renderHistory(); toast("Your analyses were cleared"); } });
+
+/* ---- modal ---- */
+function openModal(id) {
+  const it = allItems().find(x => x.id === id); if (!it) return;
+  const real = it.label === "REAL";
+  $("#modalBox").innerHTML = `<button class="x" id="mx" aria-label="Close">✕</button><h3 id="mTitle" style="margin-right:44px">${esc(it.title)}</h3>
+   <div class="row" style="margin:12px 0"><span class="badge ${real ? "real" : "fake"}">${real ? "Real" : "Fake"}</span><span class="tag">${it.conf.toFixed(1)}% confidence</span><span class="tag">${esc(it.category)}</span><span class="tag">${esc(it.source)}</span><span class="tag">${fmtDate(it.date)}</span></div>
+   <div class="rs"><h4>Why this result</h4><p>${esc(it.summary)}</p><ul>${(it.reasons || []).map(r => `<li>${esc(r)}</li>`).join("")}</ul>${chipsHTML(it)}<h4>Highlighted text</h4><div class="excerpt">${highlight(it.text)}</div></div>`;
+  $("#modal").classList.add("open"); $("#mx").focus(); $("#mx").addEventListener("click", closeModal);
+}
+function closeModal() { $("#modal").classList.remove("open"); }
+$("#modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { closeModal(); document.body.classList.remove("menu"); } });
+
+/* ---- router ---- */
+const TITLES = { home: "Dashboard", detect: "Detect news", analytics: "Analytics", history: "History", about: "About" };
+function route() {
+  const p = (location.hash || "#home").slice(1); const page = TITLES[p] ? p : "home";
+  $$(".page").forEach(s => s.classList.toggle("show", s.id === "page-" + page));
+  $$("#nav a").forEach(a => a.classList.toggle("active", a.dataset.page === page));
+  document.title = "TruthLens – " + TITLES[page]; document.body.classList.remove("menu");
+  if (page === "home") renderHome(); if (page === "analytics") renderAnalytics(); if (page === "history") renderHistory();
+  window.scrollTo(0, 0);
+}
+window.addEventListener("hashchange", route);
+$("#menuBtn").addEventListener("click", () => document.body.classList.toggle("menu"));
+$("#scrim").addEventListener("click", () => document.body.classList.remove("menu"));
+const mq = window.matchMedia("(prefers-color-scheme: dark)");
+(mq.addEventListener ? mq.addEventListener.bind(mq, "change") : mq.addListener.bind(mq))(() => route());
+if (window.Chart) route(); else window.addEventListener("load", route);
+initServer();
+</script>
+</body>
+</html>
